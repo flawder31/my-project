@@ -1,0 +1,80 @@
+:root {
+    --bg-primary: #1a1a1a;
+    --bg-secondary: #2d2d2d;
+    --accent: #6f42c1;
+}
+
+body {
+    background-color: var(--bg-primary);
+    color: #fff;
+    font-family: Arial, sans-serif;
+    padding-top: 76px;
+    scroll-padding-top: 80px;
+}
+
+.hero {
+    background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), var(--bg-secondary);
+    min-height: 100vh;
+}
+
+.section-block {
+    scroll-margin-top: 80px;
+}
+
+.card {
+    background-color: var(--bg-secondary);
+    border: 1px solid #444;
+    transition: transform 0.3s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+
+.gallery-item {
+    height: 250px;
+    border-radius: 8px;
+}
+
+footer {
+    background-color: var(--bg-secondary);
+}
+
+.navbar-brand {
+    color: var(--accent) !important;
+}
+
+.btn-primary {
+    background-color: var(--accent);
+    border-color: var(--accent);
+}
+
+.btn-primary:hover {
+    background-color: #5a32a8;
+    border-color: #5a32a8;
+}
+
+.btn-outline-primary {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--accent);
+    border-color: var(--accent);
+}
+
+.fade-in {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.6s, transform 0.6s;
+}
+
+.fade-in.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+html {
+    scroll-behavior: smooth;
+}

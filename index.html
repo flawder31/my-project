@@ -3,59 +3,232 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Главная</title>
-    <meta name="description" content="Пример текста">
-    <link rel="stylesheet" href="styles.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <title>NextPC - Сборка игровых компьютеров</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
 </head>
-<body>
-<header class="site-header">
-    <div class="site-header__container">
-        <a href="index.html" class="site-header__brand">RB</a>
-        <nav class="site-nav" aria-label="Основная навигация">
-            <ul class="site-nav__list">
-                <li><a href="index.html" class="site-nav__link site-nav__link--active">Главная</a></li>
-                <li><a href="about.html" class="site-nav__link">О нас</a></li>
-                <li><a href="contacts.html" class="site-nav__link">Контакты</a></li>
-            </ul>
-        </nav>
-    </div>
-</header>
-    
-    <main class="main-content">
-        <nav class="breadcrumbs" aria-label="Хлебные крошки">
-            <ul class="breadcrumbs__list">
-                <li><a href="index.html" class="breadcrumbs__link">Главная</a></li>
-            </ul>
-        </nav>
-        
-        <section class="hero">
-            <h1>Пример текста</h1>
-            <p>Текст</p>
-        </section>
-        
-        <section class="section">
-            <h2 class="section__title">Наши услуги</h2>
-            <p>123123</p>
-            
-            <div style="margin-top: var(--space-5); text-align: center;">
-                <img src="assets/service-640.jpg" 
-                     srcset="assets/service-640.jpg 640w, assets/service-960.jpg 960w"
-                     sizes="(max-width: 768px) 100vw, 640px"
-                     alt="Наши услуги" 
-                     width="640" 
-                     height="360"
-                     loading="lazy"
-                     style="border-radius: var(--radius-lg); border: 1px solid var(--color-border);">
+<body data-bs-spy="scroll" data-bs-target="#navbar" data-bs-offset="80">
+    <nav id="navbar" class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="#home">NextPC</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="#home">Главная</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#about">О нас</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#services">Услуги</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#gallery">Галерея</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#contacts">Контакты</a></li>
+                </ul>
+                <button class="btn btn-primary ms-3" data-bs-toggle="modal" data-bs-target="#orderModal">Заказать</button>
             </div>
-        </section>
-        
-    </main>
-    
-    <footer class="site-footer">
-        <p>&copy; 2025 RB.</p>
-       
+        </div>
+    </nav>
+
+    <section id="home" class="hero d-flex align-items-center">
+        <div class="container">
+            <div class="row justify-content-center text-center">
+                <div class="col-lg-8">
+                    <h1 class="display-3 fw-bold mb-4">Мощные игровые компьютеры</h1>
+                    <p class="lead mb-4">Соберем ПК вашей мечты с максимальной производительностью</p>
+                    <button class="btn btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#orderModal">Собрать ПК</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="about" class="section-block py-5">
+        <div class="container">
+            <div class="row justify-content-center">
+                <div class="text-center">
+                    <h2 class="mb-4">О компании</h2>
+                    <p class="mb-4">Мы специализируемся на создании игровых компьютеров премиум-класса. Наша команда профессионалов подберет оптимальные компоненты для любых задач.</p>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <div class="card bg-dark h-100 text-white">
+                                <div class="card-body">
+                                    <h5>Качество</h5>
+                                    <p>Используем только проверенные компоненты</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card bg-dark h-100 text-white">
+                                <div class="card-body">
+                                    <h5>Гарантия</h5>
+                                    <p>Предоставляем расширенную гарантию на все сборки</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card bg-dark h-100 text-white">
+                                <div class="card-body">
+                                    <h5>Поддержка</h5>
+                                    <p>Круглосуточная техническая поддержка</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="services" class="section-block py-5 bg-dark">
+        <div class="container">
+            <h2 class="text-center mb-5">Наши услуги</h2>
+            <div class="row">
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100 text-white">
+                        <div class="card-body text-center">
+                            <h5 class="card-title text-light">Базовая</h5>
+                            <p class="card-text text-light">Идеально для начинающих геймеров</p>
+                            <ul class="list-unstyled text-light">
+                                <li>Процессор Intel i5</li>
+                                <li>Видеокарта GTX 1660</li>
+                                <li>16GB RAM</li>
+                            </ul>
+                            <button class="btn btn-outline-primary">Выбрать</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100 text-white">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">Профи</h5>
+                            <p class="card-text">Для опытных игроков и стримеров</p>
+                            <ul class="list-unstyled">
+                                <li>Процессор Intel i7</li>
+                                <li>Видеокарта RTX 3060</li>
+                                <li>32GB RAM</li>
+                            </ul>
+                            <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#orderModal">Выбрать</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="card h-100 text-white">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">Премиум</h5>
+                            <p class="card-text">Максимальная производительность</p>
+                            <ul class="list-unstyled">
+                                <li>Процессор Intel i9</li>
+                                <li>Видеокарта RTX 4090</li>
+                                <li>64GB RAM</li>
+                            </ul>
+                            <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#orderModal">Выбрать</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="gallery" class="section-block py-5">
+        <div class="container">
+            <h2 class="text-center mb-5">Галерея сборок</h2>
+            <div class="row">
+                <div class="col-md-4 mb-4">
+                    <div class="gallery-item">
+                        <img src="images/img1.jpg" alt="Игровой компьютер 1" class="img-fluid rounded">
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="gallery-item">
+                        <img src="images/img2.jpg" alt="Игровой компьютер 1" class="img-fluid rounded">
+                    </div>
+                </div>
+                <div class="col-md-4 mb-4">
+                    <div class="gallery-item">
+                        <img src="images/img3.jpg" alt="Игровой компьютер 1" class="img-fluid rounded">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="contacts" class="section-block py-5 bg-dark">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <h3 class="mb-4">Свяжитесь с нами</h3>
+                    <form id="contactForm">
+                        <div class="mb-3">
+                            <input type="text" class="form-control" placeholder="Ваше имя" required>
+                        </div>
+                        <div class="mb-3">
+                            <input type="email" class="form-control" placeholder="Email" required>
+                        </div>
+                        <div class="mb-3">
+                            <textarea class="form-control" rows="5" placeholder="Сообщение" required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Отправить</button>
+                    </form>
+                </div>
+                <div class="col-md-6 mt-4 mt-md-0">
+                    <h3 class="mb-4">Контакты</h3>
+                    <p>Телефон: +7 (999) 123-45-67</p>
+                    <p>Email: info@nextpc.ru</p>
+                    <p>Адрес: Москва, ул. Примерная, д. 123</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="py-4">
+        <div class="container text-center">
+            <p>&copy; 2025 NextPC. Все права защищены.</p>
+            <div class="social-links">
+                <a href="#" class="text-white me-3">VK</a>
+                <a href="#" class="text-white me-3">Telegram</a>
+                <a href="#" class="text-white">YouTube</a>
+            </div>
+        </div>
     </footer>
+
+    <div class="modal fade" id="orderModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content bg-dark">
+                <div class="modal-header">
+                    <h5 class="modal-title">Форма заказа</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="orderForm" novalidate>
+                        <div class="mb-3">
+                            <input type="text" class="form-control" id="name" placeholder="Имя" required minlength="2">
+                            <div class="invalid-feedback">Пожалуйста, введите имя (минимум 2 символа)</div>
+                        </div>
+                        <div class="mb-3">
+                            <input type="tel" class="form-control" id="phone" placeholder="Телефон" required pattern="[\+\-0-9\s\(\)]{7,}">
+                            <div class="invalid-feedback">Пожалуйста, введите корректный номер телефона</div>
+                        </div>
+                        <div class="mb-3">
+                            <input type="email" class="form-control" id="email" placeholder="Email" required>
+                            <div class="invalid-feedback">Пожалуйста, введите корректный email</div>
+                        </div>
+                        <div class="mb-3">
+                            <select class="form-select" id="assembly" required>
+                                <option value="">Выберите сборку</option>
+                                <option value="basic">Базовая</option>
+                                <option value="pro">Профи</option>
+                                <option value="premium">Премиум</option>
+                            </select>
+                            <div class="invalid-feedback">Пожалуйста, выберите тип сборки</div>
+                        </div>
+                        <div class="mb-3">
+                            <textarea class="form-control" id="message" rows="3" placeholder="Дополнительные пожелания"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Отправить заявку</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>

@@ -12,11 +12,18 @@ from aiogram.types import CallbackQuery, Message
 
 from bot.config import settings
 from bot.db import queries
-from bot.keyboards.inline import admin_menu_kb, admin_promo_kb, back_to_menu_kb
+from bot.keyboards.inline import (
+    admin_menu_kb,
+    admin_payments_pagination_kb,
+    admin_promo_kb,
+    back_to_menu_kb,
+)
 from bot.utils.helpers import format_datetime, generate_promo_code
 
 router = Router(name="admin")
 logger = logging.getLogger(__name__)
+
+_PAYMENTS_PER_PAGE = 10
 
 
 def is_admin(user_id: int) -> bool:
@@ -152,16 +159,21 @@ async def cmd_user_info(message: Message) -> None:
     await message.answer(text, parse_mode="HTML")
 
 
-# ──────────────── Payments ────────────────
+# ──────────────── Payments (with pagination) ────────────────
 
-@router.callback_query(F.data == "admin_payments")
+# IMPROVED: pagination for admin payments
+@router.callback_query(F.data.startswith("admin_payments:"))
 async def cb_admin_payments(callback: CallbackQuery) -> None:
     if not is_admin(callback.from_user.id):
         await callback.answer("Нет доступа", show_alert=True)
         return
 
-    payments = await queries.get_recent_payments(10)
-    if not payments:
+    page = int(callback.data.split(":")[1])
+    offset = page * _PAYMENTS_PER_PAGE
+    # Fetch one extra to know if there's a next page
+    payments = await queries.get_recent_payments(limit=_PAYMENTS_PER_PAGE + 1, offset=offset)
+
+    if not payments and page == 0:
         await callback.message.edit_text(
             "\U0001f4b0 <b>Платежей пока нет.</b>",
             reply_markup=admin_menu_kb(),
@@ -170,8 +182,15 @@ async def cb_admin_payments(callback: CallbackQuery) -> None:
         await callback.answer()
         return
 
-    lines = ["\U0001f4b0 <b>Последние платежи:</b>\n"]
-    for p in payments:
+    if not payments:
+        await callback.answer("Больше платежей нет", show_alert=True)
+        return
+
+    has_next = len(payments) > _PAYMENTS_PER_PAGE
+    display_payments = payments[:_PAYMENTS_PER_PAGE]
+
+    lines = [f"\U0001f4b0 <b>Платежи (стр. {page + 1}):</b>\n"]
+    for p in display_payments:
         name = p.get("username") or p.get("full_name", "—")
         lines.append(
             f"\u2022 {format_datetime(p['created_at'])} | "
@@ -181,7 +200,7 @@ async def cb_admin_payments(callback: CallbackQuery) -> None:
 
     await callback.message.edit_text(
         "\n".join(lines),
-        reply_markup=admin_menu_kb(),
+        reply_markup=admin_payments_pagination_kb(page, has_next),
         parse_mode="HTML",
     )
     await callback.answer()

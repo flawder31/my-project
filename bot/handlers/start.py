@@ -47,7 +47,16 @@ async def cmd_start(message: Message) -> None:
         ref_param = args[1].strip()
         referrer = await queries.get_user_by_referral_code(ref_param)
         if referrer and referrer["id"] != user.id:
-            referrer_id = referrer["id"]
+            # FIXED: circular referral protection —
+            # check that the referrer wasn't already referred by this user
+            is_circular = await queries.is_referred_by(user.id, referrer["id"])
+            if not is_circular:
+                referrer_id = referrer["id"]
+            else:
+                logger.warning(
+                    "Blocked circular referral: user %s tried to refer %s",
+                    user.id, referrer["id"],
+                )
 
     db_user = await queries.get_or_create_user(
         user_id=user.id,

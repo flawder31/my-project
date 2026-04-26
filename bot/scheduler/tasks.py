@@ -13,32 +13,54 @@ from bot.marzban.client import marzban_client
 
 logger = logging.getLogger(__name__)
 
+# IMPROVED: concurrency limit for parallel notifications
+_NOTIFY_CONCURRENCY = 20
 
+
+async def _send_expiry_notification(bot: Bot, sub: dict, days: int) -> None:
+    """Send a single expiry notification."""
+    try:
+        text = (
+            f"\u26a0\ufe0f <b>Подписка истекает через {days} дн.!</b>\n\n"
+            f"\U0001f517 <code>{sub.get('subscription_url', '')}</code>\n\n"
+            "Продлите подписку, чтобы не потерять доступ."
+        )
+        await bot.send_message(
+            sub["tg_user_id"],
+            text,
+            reply_markup=back_to_menu_kb(),
+            parse_mode="HTML",
+        )
+        await queries.mark_notified(sub["id"], days)
+        logger.info(
+            "Notified user %s about sub %s expiring in %d days",
+            sub["tg_user_id"], sub["id"], days,
+        )
+    except Exception as exc:
+        logger.warning("Failed to notify user %s: %s", sub.get("tg_user_id"), exc)
+
+
+# IMPROVED: parallel notifications with semaphore
 async def check_expiring_subscriptions(bot: Bot) -> None:
-    """Send notifications for subscriptions expiring in 3 and 1 days."""
+    """Send notifications for subscriptions expiring in configured days."""
     for days in settings.subscription.notify_before_days:
         try:
             subs = await queries.get_expiring_subscriptions(days)
-            for sub in subs:
-                try:
-                    text = (
-                        f"\u26a0\ufe0f <b>Подписка истекает через {days} дн.!</b>\n\n"
-                        f"\U0001f517 <code>{sub.get('subscription_url', '')}</code>\n\n"
-                        "Продлите подписку, чтобы не потерять доступ."
-                    )
-                    await bot.send_message(
-                        sub["tg_user_id"],
-                        text,
-                        reply_markup=back_to_menu_kb(),
-                        parse_mode="HTML",
-                    )
-                    await queries.mark_notified(sub["id"], days)
-                    logger.info(
-                        "Notified user %s about sub %s expiring in %d days",
-                        sub["tg_user_id"], sub["id"], days,
-                    )
-                except Exception as exc:
-                    logger.warning("Failed to notify user %s: %s", sub.get("tg_user_id"), exc)
+            if not subs:
+                continue
+
+            semaphore = asyncio.Semaphore(_NOTIFY_CONCURRENCY)
+
+            async def _limited_notify(sub: dict) -> None:
+                async with semaphore:
+                    await _send_expiry_notification(bot, sub, days)
+
+            await asyncio.gather(
+                *[_limited_notify(sub) for sub in subs],
+                return_exceptions=True,
+            )
+            logger.info("Processed %d expiry notifications (%d days)", len(subs), days)
+
         except Exception as exc:
             logger.error("Error checking expiring subs (%d days): %s", days, exc)
 
@@ -82,6 +104,9 @@ async def scheduler_loop(bot: Bot) -> None:
         try:
             await check_expiring_subscriptions(bot)
             await disable_expired_subscriptions(bot)
+        except asyncio.CancelledError:
+            logger.info("Scheduler cancelled, shutting down")
+            break
         except Exception as exc:
             logger.error("Scheduler iteration error: %s", exc)
         await asyncio.sleep(600)  # 10 minutes

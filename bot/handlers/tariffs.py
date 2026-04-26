@@ -50,13 +50,14 @@ async def cb_select_tariff(callback: CallbackQuery) -> None:
             price = queries.calc_discount(tariff["price_stars"], promo)
             discount_info = f"\n\U0001f3ab Промокод: скидка {tariff['price_stars'] - price}\u2b50"
 
+    # IMPROVED: explicit confirmation step
     text = (
         f"\U0001f4cb <b>Тариф: {tariff['name']}</b>\n\n"
         f"\u23f3 Срок: {tariff['duration_days']} дней\n"
         f"\U0001f4f1 Устройств: {tariff['device_limit']}\n"
         f"\U0001f4b0 Стоимость: {price}\u2b50"
         f"{discount_info}\n\n"
-        f"Нажмите кнопку ниже для оплаты:"
+        f"Подтвердите оплату или нажмите «Отмена» для возврата:"
     )
 
     await callback.message.edit_text(
@@ -65,6 +66,3 @@ async def cb_select_tariff(callback: CallbackQuery) -> None:
         parse_mode="HTML",
     )
     await callback.answer()
-
-
-

@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
-from bot.db.database import get_cursor
+from bot.db.database import get_cursor, get_transactional_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -92,11 +92,20 @@ async def set_user_admin(user_id: int, is_admin: bool) -> None:
 # ──────────────── Tariffs ────────────────
 
 async def get_active_tariffs() -> list[dict[str, Any]]:
+    # IMPROVED: use TTL cache to avoid hitting DB on every menu open
+    from bot.utils.cache import tariff_cache
+    cached = tariff_cache.get()
+    if cached is not None:
+        return cached
+
     async with get_cursor() as cur:
         await cur.execute(
             "SELECT * FROM tariffs WHERE is_active = 1 ORDER BY price_stars ASC"
         )
-        return await cur.fetchall()
+        result = await cur.fetchall()
+
+    tariff_cache.set(result)
+    return result
 
 
 async def get_tariff(tariff_id: int) -> dict[str, Any] | None:
@@ -147,30 +156,34 @@ async def get_user_active_subscriptions(user_id: int) -> list[dict[str, Any]]:
         return await cur.fetchall()
 
 
+# FIXED: notification queries using subscription_notifications table
 async def get_expiring_subscriptions(days: int) -> list[dict[str, Any]]:
     now = datetime.utcnow()
     target = now + timedelta(days=days)
-    notified_col = f"notified_{days}d"
 
     async with get_cursor() as cur:
         await cur.execute(
-            f"""SELECT s.*, u.id as tg_user_id
-                FROM subscriptions s
-                JOIN users u ON s.user_id = u.id
-                WHERE s.is_active = 1
-                  AND s.expires_at <= %s
-                  AND s.expires_at > %s
-                  AND s.{notified_col} = 0""",
-            (target, now),
+            """SELECT s.*, u.id AS tg_user_id
+               FROM subscriptions s
+               JOIN users u ON s.user_id = u.id
+               LEFT JOIN subscription_notifications sn
+                   ON sn.subscription_id = s.id AND sn.days_before = %s
+               WHERE s.is_active = 1
+                 AND s.expires_at <= %s
+                 AND s.expires_at > %s
+                 AND sn.id IS NULL""",
+            (days, target, now),
         )
         return await cur.fetchall()
 
 
+# FIXED: use notification table instead of hardcoded columns
 async def mark_notified(sub_id: int, days: int) -> None:
-    col = f"notified_{days}d"
     async with get_cursor() as cur:
         await cur.execute(
-            f"UPDATE subscriptions SET {col} = 1 WHERE id = %s", (sub_id,)
+            """INSERT IGNORE INTO subscription_notifications
+               (subscription_id, days_before) VALUES (%s, %s)""",
+            (sub_id, days),
         )
 
 
@@ -192,6 +205,23 @@ async def deactivate_subscription(sub_id: int) -> None:
         await cur.execute(
             "UPDATE subscriptions SET is_active = 0 WHERE id = %s", (sub_id,)
         )
+
+
+# FIXED: deactivate all active subscriptions for a user (for #2 — prevent duplicates)
+async def deactivate_user_subscriptions(user_id: int) -> list[dict[str, Any]]:
+    """Deactivate all active subscriptions for a user, return them for Marzban cleanup."""
+    async with get_cursor() as cur:
+        await cur.execute(
+            """SELECT marzban_username FROM subscriptions
+               WHERE user_id = %s AND is_active = 1""",
+            (user_id,),
+        )
+        old_subs = await cur.fetchall()
+        await cur.execute(
+            "UPDATE subscriptions SET is_active = 0 WHERE user_id = %s AND is_active = 1",
+            (user_id,),
+        )
+        return old_subs
 
 
 async def count_active_subscriptions() -> int:
@@ -240,6 +270,14 @@ async def complete_payment(
         )
 
 
+async def fail_payment(payment_id: int) -> None:
+    async with get_cursor() as cur:
+        await cur.execute(
+            "UPDATE payments SET status = 'failed' WHERE id = %s",
+            (payment_id,),
+        )
+
+
 async def get_payment(payment_id: int) -> dict[str, Any] | None:
     async with get_cursor() as cur:
         await cur.execute("SELECT * FROM payments WHERE id = %s", (payment_id,))
@@ -264,15 +302,30 @@ async def sum_revenue() -> int:
         return row[0] if row else 0
 
 
-async def get_recent_payments(limit: int = 20) -> list[dict[str, Any]]:
+# IMPROVED: pagination support for admin panel
+async def get_recent_payments(limit: int = 10, offset: int = 0) -> list[dict[str, Any]]:
     async with get_cursor() as cur:
         await cur.execute(
             """SELECT p.*, u.username, u.full_name, t.name as tariff_name
                FROM payments p
                JOIN users u ON p.user_id = u.id
                LEFT JOIN tariffs t ON p.tariff_id = t.id
+               ORDER BY p.created_at DESC LIMIT %s OFFSET %s""",
+            (limit, offset),
+        )
+        return await cur.fetchall()
+
+
+# IMPROVED: user payment history
+async def get_user_payments(user_id: int, limit: int = 10) -> list[dict[str, Any]]:
+    async with get_cursor() as cur:
+        await cur.execute(
+            """SELECT p.*, t.name as tariff_name
+               FROM payments p
+               LEFT JOIN tariffs t ON p.tariff_id = t.id
+               WHERE p.user_id = %s
                ORDER BY p.created_at DESC LIMIT %s""",
-            (limit,),
+            (user_id, limit),
         )
         return await cur.fetchall()
 
@@ -299,8 +352,23 @@ async def get_promo_code(code: str) -> dict[str, Any] | None:
         return await cur.fetchone()
 
 
+# FIXED: race condition — use SELECT ... FOR UPDATE in a transaction
 async def use_promo_code(promo_id: int, user_id: int) -> None:
-    async with get_cursor() as cur:
+    async with get_transactional_cursor() as cur:
+        # Lock the promo code row
+        await cur.execute(
+            "SELECT * FROM promo_codes WHERE id = %s FOR UPDATE",
+            (promo_id,),
+        )
+        promo = await cur.fetchone()
+        if not promo:
+            raise ValueError("Promo code not found")
+
+        # Check if max uses exceeded
+        if promo["max_uses"] is not None and promo["used_count"] >= promo["max_uses"]:
+            raise ValueError("Promo code usage limit exceeded")
+
+        # Check if user already used this promo
         await cur.execute(
             "SELECT id FROM promo_usage WHERE promo_code_id = %s AND user_id = %s",
             (promo_id, user_id),
@@ -398,6 +466,18 @@ async def get_unrewarded_referral(referrer_id: int, referred_id: int) -> dict[st
             (referrer_id, referred_id),
         )
         return await cur.fetchone()
+
+
+# FIXED: circular referral detection
+async def is_referred_by(user_id: int, potential_referrer_id: int) -> bool:
+    """Check if user_id has already referred potential_referrer_id (circular check)."""
+    async with get_cursor(dict_cursor=False) as cur:
+        await cur.execute(
+            "SELECT COUNT(*) FROM referrals WHERE referrer_id = %s AND referred_id = %s",
+            (user_id, potential_referrer_id),
+        )
+        row = await cur.fetchone()
+        return (row[0] if row else 0) > 0
 
 
 # ──────────────── Broadcasts ────────────────

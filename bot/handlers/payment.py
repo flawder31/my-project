@@ -10,6 +10,7 @@ from aiogram.types import (
     PreCheckoutQuery,
 )
 
+from bot.config import settings
 from bot.db import queries
 from bot.keyboards.inline import back_to_menu_kb
 from bot.marzban.client import marzban_client
@@ -92,6 +93,35 @@ async def successful_payment(message: Message) -> None:
         )
         return
 
+    # FIXED: validate payment amount matches expected price
+    payment_record = await queries.get_payment(payment_id)
+    if payment_record:
+        expected_amount = payment_record["amount_stars"]
+        actual_amount = sp.total_amount
+        if actual_amount != expected_amount:
+            logger.error(
+                "Payment amount mismatch! payment_id=%s expected=%s actual=%s user=%s",
+                payment_id, expected_amount, actual_amount, user.id,
+            )
+            await queries.fail_payment(payment_id)
+            await message.answer(
+                "\u274c Ошибка: сумма платежа не совпадает с ожидаемой. "
+                "Свяжитесь с поддержкой.\n"
+                f"ID платежа: {payment_id}",
+                reply_markup=back_to_menu_kb(),
+                parse_mode="HTML",
+            )
+            return
+
+    # FIXED: deactivate existing subscriptions to prevent duplicates
+    old_subs = await queries.deactivate_user_subscriptions(user.id)
+    for old_sub in old_subs:
+        try:
+            await marzban_client.disable_user(old_sub["marzban_username"])
+            logger.info("Disabled old Marzban user %s before new purchase", old_sub["marzban_username"])
+        except Exception as exc:
+            logger.warning("Failed to disable old Marzban user %s: %s", old_sub["marzban_username"], exc)
+
     marzban_username = generate_marzban_username(user.id)
 
     try:
@@ -127,14 +157,16 @@ async def successful_payment(message: Message) -> None:
         subscription_id=sub["id"],
     )
 
-    # reward referrer
+    # FIXED: safe referral reward — use .get() for all dict access
     db_user = await queries.get_user(user.id)
-    if db_user and db_user.get("referrer_id"):
-        ref = await queries.get_unrewarded_referral(db_user["referrer_id"], user.id)
+    referrer_id = db_user.get("referrer_id") if db_user else None
+    if referrer_id:
+        ref = await queries.get_unrewarded_referral(referrer_id, user.id)
         if ref:
-            from bot.config import settings
-            await queries.add_bonus_days(db_user["referrer_id"], ref["bonus_days"])
-            await queries.reward_referral(db_user["referrer_id"], user.id)
+            bonus = ref.get("bonus_days", settings.subscription.referral_bonus_days)
+            await queries.add_bonus_days(referrer_id, bonus)
+            await queries.reward_referral(referrer_id, user.id)
+            logger.info("Rewarded referrer %s with %d bonus days", referrer_id, bonus)
 
     text = (
         "\u2705 <b>Подписка активирована!</b>\n\n"

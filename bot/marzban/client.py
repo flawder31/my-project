@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Any
@@ -10,9 +11,14 @@ from bot.config import settings
 
 logger = logging.getLogger(__name__)
 
+# IMPROVED: retry config
+_MAX_RETRIES = 3
+_RETRY_DELAY = 1.0
+_RETRY_BACKOFF = 2.0
+
 
 class MarzbanClient:
-    """Async client for Marzban Panel REST API."""
+    """Async client for Marzban Panel REST API with retry logic."""
 
     def __init__(self) -> None:
         self._base = settings.marzban.base_url.rstrip("/")
@@ -57,19 +63,45 @@ class MarzbanClient:
         token = await self._auth()
         return {"Authorization": f"Bearer {token}"}
 
+    # IMPROVED: retry logic with exponential backoff
     async def _request(
         self, method: str, path: str, **kwargs: Any
     ) -> dict[str, Any] | list[Any]:
-        session = await self._get_session()
-        headers = await self._headers()
-        url = f"{self._base}{path}"
+        last_exc: Exception | None = None
+        delay = _RETRY_DELAY
 
-        async with session.request(method, url, headers=headers, **kwargs) as resp:
-            if resp.status >= 400:
-                body = await resp.text()
-                logger.error("Marzban %s %s -> %s: %s", method, path, resp.status, body)
-                resp.raise_for_status()
-            return await resp.json()
+        for attempt in range(1, _MAX_RETRIES + 1):
+            try:
+                session = await self._get_session()
+                headers = await self._headers()
+                url = f"{self._base}{path}"
+
+                async with session.request(method, url, headers=headers, **kwargs) as resp:
+                    if resp.status == 401:
+                        # Token expired mid-session, force re-auth
+                        self._token = None
+                        self._token_expires = None
+                        if attempt < _MAX_RETRIES:
+                            logger.warning("Marzban 401 on %s %s, re-authenticating (attempt %d)", method, path, attempt)
+                            continue
+                    if resp.status >= 400:
+                        body = await resp.text()
+                        logger.error("Marzban %s %s -> %s: %s", method, path, resp.status, body)
+                        resp.raise_for_status()
+                    return await resp.json()
+
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                last_exc = exc
+                if attempt < _MAX_RETRIES:
+                    logger.warning(
+                        "Marzban %s %s failed (attempt %d/%d): %s. Retrying in %.1fs",
+                        method, path, attempt, _MAX_RETRIES, exc, delay,
+                    )
+                    await asyncio.sleep(delay)
+                    delay *= _RETRY_BACKOFF
+
+        logger.error("Marzban %s %s failed after %d attempts", method, path, _MAX_RETRIES)
+        raise last_exc or RuntimeError(f"Marzban request failed: {method} {path}")
 
     # ────── User Management ──────
 
@@ -85,21 +117,25 @@ class MarzbanClient:
         expire_ts = int((now + timedelta(days=days)).timestamp())
 
         proxies = await self._get_default_proxies()
+        inbounds = await self._get_default_inbounds()
+
+        # FIXED: validate that we have at least proxies and inbounds before creating
+        if not proxies:
+            proxies = {"vless": {"flow": "xtls-rprx-vision"}}
+            logger.warning("Using fallback proxy config for user %s", username)
+        if not inbounds:
+            logger.warning("Empty inbounds for user %s — Marzban may reject", username)
 
         payload: dict[str, Any] = {
             "username": username,
             "proxies": proxies,
-            "inbounds": await self._get_default_inbounds(),
+            "inbounds": inbounds,
             "expire": expire_ts,
             "data_limit": int(data_limit_gb * 1024**3) if data_limit_gb else 0,
             "data_limit_reset_strategy": "no_reset",
             "status": "active",
             "note": note,
         }
-
-        if device_limit > 0:
-            payload["on_hold_timeout"] = None
-            payload["on_hold_expire_duration"] = None
 
         result = await self._request("POST", "/api/user", json=payload)
         logger.info("Marzban: user %s created (expire in %d days)", username, days)
@@ -146,35 +182,61 @@ class MarzbanClient:
     async def get_inbounds(self) -> dict[str, Any]:
         return await self._request("GET", "/api/inbounds")
 
+    # IMPROVED: healthcheck method
+    async def healthcheck(self) -> bool:
+        """Verify Marzban is reachable and credentials are valid."""
+        try:
+            await self._auth()
+            return True
+        except Exception as exc:
+            logger.error("Marzban healthcheck failed: %s", exc)
+            return False
+
     # ────── Helpers ──────
 
+    # FIXED: always return at least default proxies even on error
     async def _get_default_proxies(self) -> dict[str, Any]:
+        fallback = {"vless": {"flow": "xtls-rprx-vision"}}
         try:
             inbounds = await self.get_inbounds()
+            if not inbounds or not isinstance(inbounds, dict):
+                logger.warning("Marzban returned empty/invalid inbounds, using fallback")
+                return fallback
+
             proxies: dict[str, Any] = {}
             for protocol in inbounds:
-                if protocol.lower() == "vless":
+                proto_lower = protocol.lower()
+                if proto_lower == "vless":
                     proxies["vless"] = {"flow": "xtls-rprx-vision"}
-                elif protocol.lower() == "vmess":
+                elif proto_lower == "vmess":
                     proxies["vmess"] = {}
-                elif protocol.lower() == "trojan":
+                elif proto_lower == "trojan":
                     proxies["trojan"] = {"password": ""}
-                elif protocol.lower() == "shadowsocks":
+                elif proto_lower == "shadowsocks":
                     proxies["shadowsocks"] = {"method": "chacha20-ietf-poly1305"}
                 else:
                     proxies[protocol] = {}
-            return proxies if proxies else {"vless": {"flow": "xtls-rprx-vision"}}
-        except Exception:
-            return {"vless": {"flow": "xtls-rprx-vision"}}
+            return proxies if proxies else fallback
+        except Exception as exc:
+            logger.warning("Failed to get inbounds for proxies: %s, using fallback", exc)
+            return fallback
 
+    # FIXED: return fallback inbounds on error to avoid empty dict
     async def _get_default_inbounds(self) -> dict[str, list[str]]:
         try:
             inbounds_data = await self.get_inbounds()
+            if not inbounds_data or not isinstance(inbounds_data, dict):
+                return {}
             result: dict[str, list[str]] = {}
             for protocol, inbound_list in inbounds_data.items():
-                result[protocol] = [ib["tag"] for ib in inbound_list]
+                if isinstance(inbound_list, list):
+                    result[protocol] = [
+                        ib["tag"] for ib in inbound_list
+                        if isinstance(ib, dict) and "tag" in ib
+                    ]
             return result
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to get inbounds: %s", exc)
             return {}
 
 

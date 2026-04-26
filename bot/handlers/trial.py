@@ -38,6 +38,15 @@ async def cb_trial(callback: CallbackQuery) -> None:
     trial_devices = settings.subscription.trial_device_limit
     marzban_username = generate_marzban_username(user_id)
 
+    # FIXED: deactivate existing subscriptions before creating trial
+    old_subs = await queries.deactivate_user_subscriptions(user_id)
+    for old_sub in old_subs:
+        try:
+            await marzban_client.disable_user(old_sub["marzban_username"])
+            logger.info("Disabled old Marzban user %s before trial", old_sub["marzban_username"])
+        except Exception as exc:
+            logger.warning("Failed to disable old Marzban user %s: %s", old_sub["marzban_username"], exc)
+
     try:
         await marzban_client.create_user(
             username=marzban_username,
